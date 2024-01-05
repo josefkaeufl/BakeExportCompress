@@ -5,6 +5,14 @@ from tkinter import messagebox
 import csv
 
 
+# Liste von Operationen
+liquidity_operations = [
+    'Liquidity mining reward BTC-DFI',
+    'Liquidity mining reward ETH-DFI',
+    # Fügen Sie hier weitere hinzu
+]
+
+
 def summarize_staking_rewards(df, columns_order):
     staking_rewards = df[df['Operation'] == 'Staking reward'].copy()
     staking_rewards['Amount'] = pd.to_numeric(staking_rewards['Amount'], errors='coerce')
@@ -52,8 +60,8 @@ def summarize_entry_staking_wallet(df, columns_order):
 
     return summary
 
-def summarize_liquidity_mining_rewards_btc_dfi(df, columns_order):
-    liquidity_rewards = df[df['Operation'] == 'Liquidity mining reward BTC-DFI'].copy()
+def summarize_liquidity_mining_rewards(df, columns_order, operation_type):
+    liquidity_rewards = df[df['Operation'] == operation_type].copy()
     liquidity_rewards['Amount'] = pd.to_numeric(liquidity_rewards['Amount'], errors='coerce')
     liquidity_rewards['FIAT value'] = pd.to_numeric(liquidity_rewards['FIAT value'], errors='coerce')
 
@@ -68,32 +76,7 @@ def summarize_liquidity_mining_rewards_btc_dfi(df, columns_order):
     summary = summary[(summary['Amount'] != 0) | (summary['FIAT value'] != 0)]
 
     summary['Date'] = summary['Date'] + pd.Timedelta(hours=23, minutes=59)
-    summary['Operation'] = 'Liquidity mining reward BTC-DFI'
-
-    summary = summary.reindex(columns=columns_order)
-    for column in columns_order:
-        if column not in summary.columns:
-            summary[column] = ''
-
-    return summary
-
-def summarize_liquidity_mining_rewards_eth_dfi(df, columns_order):
-    liquidity_rewards = df[df['Operation'] == 'Liquidity mining reward ETH-DFI'].copy()
-    liquidity_rewards['Amount'] = pd.to_numeric(liquidity_rewards['Amount'], errors='coerce')
-    liquidity_rewards['FIAT value'] = pd.to_numeric(liquidity_rewards['FIAT value'], errors='coerce')
-
-    liquidity_rewards['Date'] = pd.to_datetime(liquidity_rewards['Date']).dt.tz_localize(None).dt.normalize()
-
-    summary = liquidity_rewards.groupby(['Date', 'Coin/Asset']).agg({
-        'Amount': 'sum',
-        'FIAT value': 'sum',
-        'FIAT currency': 'first'
-    }).reset_index()
-
-    summary = summary[(summary['Amount'] != 0) | (summary['FIAT value'] != 0)]
-
-    summary['Date'] = summary['Date'] + pd.Timedelta(hours=23, minutes=59)
-    summary['Operation'] = 'Liquidity mining reward ETH-DFI'
+    summary['Operation'] = operation_type
 
     summary = summary.reindex(columns=columns_order)
     for column in columns_order:
@@ -104,12 +87,14 @@ def summarize_liquidity_mining_rewards_eth_dfi(df, columns_order):
 
 def summarize_daily(df, columns_order):
     staking_summary = summarize_staking_rewards(df, columns_order)
-    liquidity_summary_btc_dfi = summarize_liquidity_mining_rewards_btc_dfi(df, columns_order)
-    liquidity_summary_eth_dfi = summarize_liquidity_mining_rewards_eth_dfi(df, columns_order)
+
+    # Erstellen Sie Zusammenfassungen für alle Liquidity Operations
+    liquidity_summaries = [summarize_liquidity_mining_rewards(df, columns_order, op) for op in liquidity_operations]
+
     entry_staking_summary = summarize_entry_staking_wallet(df, columns_order)
 
     # Zusammenführen der Zusammenfassungen
-    summary = pd.concat([staking_summary, liquidity_summary_btc_dfi, liquidity_summary_eth_dfi, entry_staking_summary]).sort_values(by='Date')
+    summary = pd.concat([staking_summary, *liquidity_summaries, entry_staking_summary]).sort_values(by='Date')
 
     return summary
 
@@ -128,12 +113,11 @@ def process_csv(input_file, output_file):
     df['Date'] = pd.to_datetime(df['Date'], utc=True).dt.tz_localize(None)
     columns_order = df.columns.tolist()
 
-    # Direkt summarize_daily aufrufen, da wir nur tägliche Zusammenfassungen verwenden
     summary = summarize_daily(df, columns_order)
 
-    # Entfernen der Original-Einträge für "Staking reward", "Liquidity mining reward BTC-DFI" und "Entry staking wallet"
+    # Filtern des DataFrames basierend auf der operations-Liste
     filtered_df = df[
-        ~df['Operation'].isin(['Staking reward', 'Liquidity mining reward BTC-DFI', 'Liquidity mining reward ETH-DFI', 'Entry staking wallet'])]
+        ~df['Operation'].isin(['Staking reward', *liquidity_operations, 'Entry staking wallet'])]
 
     result = pd.concat([summary, filtered_df]).sort_values(by='Date')
 
