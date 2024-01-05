@@ -26,3 +26,4 @@ echo Starte das Python-Skript...
 python main.py
 
 endlocal
+
