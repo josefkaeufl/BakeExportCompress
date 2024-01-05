@@ -113,39 +113,6 @@ def summarize_daily(df, columns_order):
 
     return summary
 
-def summarize_weekly(df, columns_order):
-    staking_rewards = df[df['Operation'] == 'Staking reward'].copy()
-    staking_rewards['Amount'] = pd.to_numeric(staking_rewards['Amount'], errors='coerce')
-    staking_rewards['FIAT value'] = pd.to_numeric(staking_rewards['FIAT value'], errors='coerce')
-
-    # Gruppierung und Aggregation auf Wochenbasis
-    staking_rewards.set_index('Date', inplace=True)
-    summary = staking_rewards.resample('W-SUN').agg({
-        'Amount': 'sum',
-        'FIAT value': 'sum',
-        'Coin/Asset': 'first',
-        'FIAT currency': 'first'
-    }).reset_index()
-
-    # Setzen der Uhrzeit auf 23:59
-    summary['Date'] = summary['Date'] + pd.Timedelta(hours=23, minutes=59)
-
-    # Hinzufügen der 'Operation'-Spalte
-    summary['Operation'] = 'Staking reward'
-
-    # Korrigieren der Spaltenreihenfolge
-    summary = summary.reindex(columns=columns_order)
-
-    # Fehlende Spalten hinzufügen
-    for column in columns_order:
-        if column not in summary.columns:
-            summary[column] = ''
-
-    # Entfernen von Zeilen, bei denen 'Amount' und 'FIAT value' beide 0 sind
-    summary = summary[~((summary['Amount'] == 0) & (summary['FIAT value'] == 0))]
-
-    return summary
-
 def add_missing_columns(df, summary, columns_order):
     # Fügen Sie fehlende Spalten mit Standardwerten hinzu
     for column in columns_order:
@@ -156,17 +123,13 @@ def add_missing_columns(df, summary, columns_order):
     summary = summary[columns_order]
     return summary
 
-def process_csv(input_file, output_file, basis):
+def process_csv(input_file, output_file):
     df = pd.read_csv(input_file, parse_dates=['Date'])
     df['Date'] = pd.to_datetime(df['Date'], utc=True).dt.tz_localize(None)
     columns_order = df.columns.tolist()
 
-    if basis == 'Täglich':
-        summary = summarize_daily(df, columns_order)
-    elif basis == 'Wöchentlich':
-        summary = summarize_weekly(df, columns_order)
-    else:
-        raise ValueError("Ungültige Auswahl für die Zusammenfassungsbasis")
+    # Direkt summarize_daily aufrufen, da wir nur tägliche Zusammenfassungen verwenden
+    summary = summarize_daily(df, columns_order)
 
     # Entfernen der Original-Einträge für "Staking reward", "Liquidity mining reward BTC-DFI" und "Entry staking wallet"
     filtered_df = df[
@@ -193,21 +156,8 @@ def select_input_file():
                                                    defaultextension=".csv",
                                                    filetypes=[("CSV Dateien", "*.csv")])
         if output_file:
-            show_basis_selection(input_file, output_file)
+            process_csv(input_file, output_file)  # aktualisierter Aufruf ohne 'basis'
 
-def show_basis_selection(input_file, output_file):
-    selection_window = tk.Toplevel(root)
-    selection_window.title("Zusammenfassungsbasis wählen")
-
-    basis_var = tk.StringVar(value='Täglich')
-
-    tk.Radiobutton(selection_window, text="Täglich", variable=basis_var, value='Täglich').pack(anchor=tk.W)
-    tk.Radiobutton(selection_window, text="Wöchentlich", variable=basis_var, value='Wöchentlich').pack(anchor=tk.W)
-
-    confirm_button = tk.Button(selection_window, text="Bestätigen", command=lambda: process_csv(input_file, output_file, basis_var.get()))
-    confirm_button.pack()
-
-    selection_window.mainloop()
 
 # GUI Initialisierung
 root = tk.Tk()
